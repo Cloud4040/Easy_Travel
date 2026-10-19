@@ -5,6 +5,26 @@ const axios = require('axios')
 // Guard against prompt injection in the free-text interests field
 const cleanText = (text) => String(text).slice(0, 300).replace(/[{}<>]/g, '')
 
+// Gemini occasionally returns transient 503s ("high demand") — retry with backoff
+const callGemini = async (url, body, attempts = 3) => {
+  let lastError
+  for (let i = 0; i < attempts; i++) {
+    try {
+      return await axios.post(url, body, {
+        headers: { 'Content-Type': 'application/json' },
+        timeout: 60000
+      })
+    } catch (error) {
+      lastError = error
+      const status = error.response?.status
+      const retriable = status === 503 || status === 429 || status === 500 || !error.response
+      if (!retriable || i === attempts - 1) throw error
+      await new Promise(r => setTimeout(r, 1500 * (i + 1)))
+    }
+  }
+  throw lastError
+}
+
 // Plan a trip with Gemini: budget, dates, and interests in → day-by-day itinerary out
 router.post('/plan', async (req, res) => {
   const { destination, days, budget, interests = '', origin = '' } = req.body
@@ -31,24 +51,27 @@ Respond ONLY with valid JSON in this exact shape:
 }`;
 
   try {
-    const response = await axios.post(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${process.env.GEMINI_API_KEY}`,
+    const response = await callGemini(
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:generateContent?key=${process.env.GEMINI_API_KEY}`,
       {
         contents: [{ parts: [{ text: prompt }] }],
         generationConfig: {
           responseMimeType: 'application/json',
           temperature: 0.7
         }
-      },
-      { headers: { 'Content-Type': 'application/json' } }
+      }
     )
 
     const text = response.data.candidates[0].content.parts[0].text
     const plan = JSON.parse(text)
     res.json({ success: true, plan })
   } catch (error) {
-    console.error('Gemini error:', error.response?.data || error.message)
-    res.status(500).json({ success: false, error: 'Could not generate a trip plan. Please try again.' })
+    const upstream = error.response?.data?.error
+    console.error('Gemini error:', upstream ? `${error.response.status} ${upstream.message}` : error.message)
+    res.status(500).json({
+      success: false,
+      error: upstream?.message?.slice(0, 200) || 'Could not generate a trip plan. Please try again.'
+    })
   }
 })
 
