@@ -3,6 +3,7 @@ const cors = require('cors')
 require('dotenv').config()
 
 const flightsRouter = require('./routes/flights')
+const planRouter = require('./routes/plan')
 
 const app = express()
 const PORT = process.env.PORT || 3001
@@ -15,6 +16,7 @@ app.get('/api/health', (req, res) => {
 })
 
 app.use('/api/flights', flightsRouter)
+app.use('/api/trips', planRouter)
 
 app.listen(PORT, () => {
   console.log(`Server running on http://localhost:${PORT}`)

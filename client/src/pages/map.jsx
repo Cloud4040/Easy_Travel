@@ -3,7 +3,7 @@ import { useAuth } from '../context/AuthContext'
 import { supabase } from '../supabaseClient'
 import mapboxgl from 'mapbox-gl'
 import 'mapbox-gl/dist/mapbox-gl.css'
-import { Link } from 'react-router-dom'
+import { Link, Navigate } from 'react-router-dom'
 import worldCountries from 'world-countries'
 
 mapboxgl.accessToken = import.meta.env.VITE_MAPBOX_TOKEN
@@ -18,8 +18,26 @@ export default function Map() {
   const mapContainer = useRef(null)
   const map = useRef(null)
   const [visited, setVisited] = useState([])
-  const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
+
+  const fetchVisited = async () => {
+    const { data, error } = await supabase
+      .from('visited')
+      .select('*')
+      .eq('user_id', user.id)
+    if (error) console.error('Fetch error:', error)
+    if (data) {
+      setVisited(data)
+      updateMapHighlights(data)
+    }
+  }
+
+  const updateMapHighlights = (places) => {
+    if (!map.current || !map.current.isStyleLoaded()) return
+    const codes = places.map(p => p.country_code)
+    map.current.setFilter('visited-countries', ['in', 'iso_3166_1', ...codes])
+    map.current.setFilter('visited-countries-border', ['in', 'iso_3166_1', ...codes])
+  }
 
   useEffect(() => {
     if (map.current) return
@@ -71,27 +89,6 @@ export default function Map() {
     }
   }, [user])
 
-  const fetchVisited = async () => {
-    setLoading(true)
-    const { data, error } = await supabase
-      .from('visited')
-      .select('*')
-      .eq('user_id', user.id)
-    if (error) console.error('Fetch error:', error)
-    if (data) {
-      setVisited(data)
-      updateMapHighlights(data)
-    }
-    setLoading(false)
-  }
-
-  const updateMapHighlights = (places) => {
-    if (!map.current || !map.current.isStyleLoaded()) return
-    const codes = places.map(p => p.country_code)
-    map.current.setFilter('visited-countries', ['in', 'iso_3166_1', ...codes])
-    map.current.setFilter('visited-countries-border', ['in', 'iso_3166_1', ...codes])
-  }
-
   useEffect(() => {
     if (!map.current) return
     if (map.current.isStyleLoaded()) {
@@ -136,6 +133,8 @@ export default function Map() {
     !visited.find(v => v.country_code === c.code) &&
     c.name.toLowerCase().includes(search.toLowerCase())
   )
+
+  if (!user) return <Navigate to="/login" replace />
 
   return (
     <div className="min-h-screen bg-gray-950 text-white">

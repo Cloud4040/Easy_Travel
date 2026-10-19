@@ -1,13 +1,14 @@
 import { useState } from 'react'
 
-export default function SearchForm({ onSearch, loading }) {
+export default function SearchForm({ onSearch, loading, initial = {} }) {
   const [form, setForm] = useState({
     origin: '',
     destination: '',
     departureDate: '',
     returnDate: '',
     adults: 1,
-    cabinClass: 'economy'
+    cabinClass: 'economy',
+    ...initial
   })
 
   const handle = (e) => setForm({ ...form, [e.target.name]: e.target.value })
