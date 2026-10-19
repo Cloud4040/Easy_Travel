@@ -12,8 +12,8 @@ const durationToMinutes = (iso) => {
   return Number(match?.[1] || 0) * 60 + Number(match?.[2] || 0)
 }
 
-const formatTime = (dt) => new Date(dt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-const formatDate = (dt) => new Date(dt).toLocaleDateString([], { month: 'short', day: 'numeric' })
+const formatTime = (dt) => dt ? new Date(dt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '—'
+const formatDate = (dt) => dt ? new Date(dt).toLocaleDateString([], { month: 'short', day: 'numeric' }) : ''
 
 const formatPrice = (amount, currency) => {
   try {
@@ -27,7 +27,7 @@ const formatPrice = (amount, currency) => {
   }
 }
 
-export default function FlightResults({ flights, onSelect }) {
+export default function FlightResults({ flights, onSelect, source }) {
   const [sortBy, setSortBy] = useState('price')
   const [directOnly, setDirectOnly] = useState(false)
 
@@ -52,7 +52,14 @@ export default function FlightResults({ flights, onSelect }) {
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
-        <p className="text-gray-400 text-sm font-medium">{visible.length} flights found</p>
+        <div>
+          <p className="text-gray-400 text-sm font-medium">{visible.length} flights found</p>
+          {source === 'travelpayouts' && (
+            <p className="text-xs text-gray-400 mt-0.5">
+              Cached prices from Aviasales (last 48h) — availability is confirmed on the partner site.
+            </p>
+          )}
+        </div>
         <div className="flex items-center gap-4">
           <label className="flex items-center gap-1.5 text-sm text-gray-500 cursor-pointer">
             <input

@@ -27,6 +27,55 @@ export default function Booking() {
 
   if (!flight) return <Navigate to="/flights" replace />
 
+  // Travelpayouts offers are cached prices from Aviasales — not bookable here.
+  if (flight.source === 'travelpayouts') {
+    return (
+      <Layout>
+        <section className="max-w-lg mx-auto px-6 py-16 w-full">
+          <h2 className="text-3xl font-extrabold text-gray-800 mb-8">Your flight</h2>
+          <div className="bg-white rounded-2xl shadow-lg border border-sky-100 p-6">
+            <p className="font-bold text-gray-800 mb-4">{flight.airline}</p>
+            <div className="flex justify-between items-center mb-6">
+              <div>
+                <p className="text-xl font-bold text-gray-800">{formatTime(flight.departure)}</p>
+                <p className="text-gray-400 text-sm">{flight.origin}</p>
+              </div>
+              <div className="text-gray-300 text-sm">
+                {flight.stops === 0 ? 'Direct' : `${flight.stops} stop${flight.stops > 1 ? 's' : ''}`}
+              </div>
+              <div className="text-right">
+                <p className="text-xl font-bold text-gray-800">{formatTime(flight.arrival)}</p>
+                <p className="text-gray-400 text-sm">{flight.destination}</p>
+              </div>
+            </div>
+            <div className="border-t border-sky-100 pt-4 flex items-baseline justify-between mb-6">
+              <span className="text-gray-400 text-sm">Cached price</span>
+              <span className="text-3xl font-extrabold text-sky-500">{flight.price} {flight.currency}</span>
+            </div>
+            {flight.bookingUrl ? (
+              <a
+                href={flight.bookingUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="block text-center bg-sky-500 hover:bg-sky-400 text-white rounded-xl py-3 font-bold transition-colors shadow-sm"
+              >
+                View this deal on Aviasales ↗
+              </a>
+            ) : (
+              <Link to="/flights" className="block text-center bg-sky-500 hover:bg-sky-400 text-white rounded-xl py-3 font-bold transition-colors">
+                Back to search
+              </Link>
+            )}
+            <p className="text-xs text-gray-400 text-center mt-4">
+              This price was cached from an Aviasales search in the last 48 hours. Availability and the final price are confirmed on Aviasales.
+            </p>
+          </div>
+        </section>
+      </Layout>
+    )
+  }
+
+
   const handle = (e) => setForm({ ...form, [e.target.name]: e.target.value })
 
   const submit = async (e) => {

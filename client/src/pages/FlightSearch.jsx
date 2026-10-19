@@ -9,6 +9,7 @@ export default function FlightSearch() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
   const [searched, setSearched] = useState(false)
+  const [source, setSource] = useState(null)
   const [searchParams] = useSearchParams()
   const navigate = useNavigate()
 
@@ -30,6 +31,7 @@ export default function FlightSearch() {
       const data = await response.json()
       if (data.success) {
         setFlights(data.offers)
+        setSource(data.source)
       } else {
         setError('No flights found. Try different dates or airports.')
       }
@@ -67,6 +69,7 @@ export default function FlightSearch() {
         {!loading && !error && searched && (
           <FlightResults
             flights={flights}
+            source={source}
             onSelect={(flight) => navigate('/book', { state: { flight } })}
           />
         )}

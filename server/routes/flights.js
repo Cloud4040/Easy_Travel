@@ -1,74 +1,56 @@
 const express = require('express')
 const router = express.Router()
-const axios = require('axios')
-
-const DUFFEL_BASE = 'https://api.duffel.com'
-
-const duffelHeaders = {
-  Authorization: `Bearer ${process.env.DUFFEL_TOKEN}`,
-  'Duffel-Version': 'v2',
-  'Content-Type': 'application/json'
-}
-
-const simplifyOffer = (offer) => ({
-  id: offer.id,
-  price: offer.total_amount,
-  currency: offer.total_currency,
-  stops: offer.slices[0].segments.length - 1,
-  duration: offer.slices[0].duration,
-  departure: offer.slices[0].segments[0].departing_at,
-  arrival: offer.slices[0].segments[offer.slices[0].segments.length - 1].arriving_at,
-  airline: offer.slices[0].segments[0].marketing_carrier.name,
-  origin: offer.slices[0].origin.iata_code,
-  destination: offer.slices[0].destination.iata_code,
-  // Needed later to create an order for this offer
-  passengerIds: (offer.passengers || []).map(p => p.id)
-})
+const duffel = require('../providers/duffel')
+const travelpayouts = require('../providers/travelpayouts')
 
 router.post('/search', async (req, res) => {
-  const {
-    origin,
-    destination,
-    departureDate,
-    returnDate,
-    adults = 1,
-    cabinClass = 'economy'
-  } = req.body
+  const { origin, destination, departureDate, adults = 1, cabinClass = 'economy' } = req.body
 
+  if (!origin || !destination || !departureDate) {
+    return res.status(400).json({
+      success: false,
+      error: 'origin, destination and departureDate are required'
+    })
+  }
+
+  const trip = { ...req.body, adults, cabinClass }
+
+  // 1. Try Travelpayouts' cached real prices first (free)
+  let travelpayoutsError = null
+  if (process.env.TRAVELPAYOUTS_TOKEN) {
+    try {
+      const offers = await travelpayouts.search(trip)
+      if (offers.length > 0) {
+        console.log(`Travelpayouts: ${offers.length} cached offers for ${origin}-${destination}`)
+        return res.json({ success: true, offers, source: 'travelpayouts' })
+      }
+      console.log(`Travelpayouts: no cached offers for ${origin}-${destination} on ${departureDate}, falling back to Duffel`)
+    } catch (error) {
+      travelpayoutsError = error.message
+      console.warn(`Travelpayouts failed (${error.message}), falling back to Duffel`)
+    }
+  }
+
+  // 2. Fall back to Duffel (always has inventory, test mode by default)
   try {
-    const response = await axios.post(
-      `${DUFFEL_BASE}/air/offer_requests`,
-      {
-        data: {
-          slices: [
-            {
-              origin,
-              destination,
-              departure_date: departureDate
-            },
-            ...(returnDate ? [{
-              origin: destination,
-              destination: origin,
-              departure_date: returnDate
-            }] : [])
-          ],
-          passengers: Array(Number(adults)).fill({ type: 'adult' }),
-          cabin_class: cabinClass
-        }
-      },
-      { headers: duffelHeaders }
-    )
-
-    const offers = response.data.data.offers || []
-    res.json({ success: true, offers: offers.slice(0, 10).map(simplifyOffer) })
-
+    const offers = await duffel.search(trip)
+    return res.json({
+      success: true,
+      offers,
+      source: 'duffel',
+      // Let the client know why cached results were skipped
+      fallbackReason: travelpayoutsError ? 'travelpayouts-error' : 'no-cached-results'
+    })
   } catch (error) {
     console.error('Duffel error:', error.response?.data || error.message)
-    res.status(500).json({ success: false, error: error.response?.data || error.message })
+    return res.status(500).json({
+      success: false,
+      error: error.response?.data || error.message
+    })
   }
 })
 
-// Create an order for a previously returned offer (test-mode payments)
+// Book a Duffel offer (Travelpayouts offers are not bookable — they deep-link to Aviasales)
 router.post('/orders', async (req, res) => {
   const { offerId, passengerIds = [], passengers = [] } = req.body
 
@@ -77,32 +59,8 @@ router.post('/orders', async (req, res) => {
   }
 
   try {
-    const response = await axios.post(
-      `${DUFFEL_BASE}/air/orders`,
-      {
-        data: {
-          offer_id: offerId,
-          passengers: passengerIds.map((id, i) => ({
-            id,
-            ...(passengers[i] || {})
-          })),
-          payments: [{ type: 'test' }]
-        }
-      },
-      { headers: duffelHeaders }
-    )
-
-    const order = response.data.data
-    res.json({
-      success: true,
-      order: {
-        id: order.id,
-        reference: order.reference,
-        status: order.status,
-        total: order.total_amount,
-        currency: order.total_currency
-      }
-    })
+    const order = await duffel.createOrder({ offerId, passengerIds, passengers })
+    res.json({ success: true, order })
   } catch (error) {
     console.error('Duffel order error:', error.response?.data || error.message)
     res.status(500).json({ success: false, error: error.response?.data?.errors || error.message })
@@ -110,4 +68,3 @@ router.post('/orders', async (req, res) => {
 })
 
 module.exports = router
-module.exports.duffelHeaders = duffelHeaders
